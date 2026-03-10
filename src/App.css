@@ -64,8 +64,11 @@ label { display: grid; gap: .4rem; color: #aeb9ca; font-size: .92rem; }
 .pane-title-row { display: flex; justify-content: space-between; align-items: center; gap: .75rem; }
 .pane-title { font-size: .8rem; text-transform: uppercase; letter-spacing: .12em; color: #8fa1b8; }
 .page-pill { padding: .45rem .7rem; border-radius: 999px; background: rgba(255,255,255,.06); color: #cad4e4; }
+.reader-tools { display: grid; gap: .6rem; }
+.tag-filter-row { display: flex; gap: .45rem; flex-wrap: wrap; }
+.chip-active { border-color: rgba(113,131,255,.5); background: rgba(113,131,255,.16); }
 .paper-flow, .translation-flow {
-  display: grid; gap: .8rem; max-height: calc(100vh - 110px); overflow: auto;
+  display: grid; gap: .8rem; max-height: calc(100vh - 190px); overflow: auto;
 }
 .paper-block {
   display: grid; gap: .45rem; padding: .9rem 1rem; border-radius: 18px; background: white; border: 1px solid rgba(20,32,47,.08);

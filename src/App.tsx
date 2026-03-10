@@ -197,6 +197,8 @@ function App() {
   const [translatedPages, setTranslatedPages] = useState<Record<number, string[]>>({})
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [chatCollapsed, setChatCollapsed] = useState(false)
+  const [keyword, setKeyword] = useState('')
+  const [activeTag, setActiveTag] = useState<HighlightTag | 'all'>('all')
   const fileInputRef = useRef<HTMLInputElement | null>(null)
 
   useEffect(() => {
@@ -207,6 +209,19 @@ function App() {
   }, [recentUrls])
 
   const pageSegments = useMemo(() => (selectedPage === 'all' ? segments : segments.filter((segment) => segment.page === selectedPage)), [segments, selectedPage])
+  const highlightBySegmentId = useMemo(() => {
+    const map = new Map<string, HighlightTag>()
+    analysis.forEach((item) => map.set(item.segmentId, item.tag))
+    return map
+  }, [analysis])
+  const filteredPageSegments = useMemo(() => {
+    const keywordLower = keyword.trim().toLowerCase()
+    return pageSegments.filter((segment) => {
+      if (activeTag !== 'all' && highlightBySegmentId.get(segment.id) !== activeTag) return false
+      if (keywordLower && !segment.text.toLowerCase().includes(keywordLower) && !segment.id.toLowerCase().includes(keywordLower)) return false
+      return true
+    })
+  }, [pageSegments, keyword, activeTag, highlightBySegmentId])
   const tagStats = useMemo(() => ({
     novelty: analysis.filter((item) => item.tag === 'novelty').length,
     method: analysis.filter((item) => item.tag === 'method').length,
@@ -264,6 +279,8 @@ function App() {
       setAnswer('')
       setQaHistory([])
       setTranslatedPages({})
+      setKeyword('')
+      setActiveTag('all')
       setProgress(`已载入 ${parsed.pageCount} 页，开始准备对照阅读`)
       await runAutoAnalysis(parsed.segments)
       await translateCurrentPage(parsed.segments.filter((s) => s.page === 1), 1)
@@ -392,7 +409,17 @@ function App() {
         <section className="pdf-grid full-height">
           <div className="pdf-pane panel paper-pane">
             <div className="pane-title-row"><div className="pane-title">原文</div>{selectedPage !== 'all' ? <div className="page-pill">Page {selectedPage}</div> : null}</div>
-            {pageSegments.length ? <div className="paper-flow">{pageSegments.map((segment) => <article key={segment.id} className="paper-block"><div className="paper-block-meta">{segment.id}</div><div className="paper-block-text">{segment.text}</div></article>)}</div> : <div className="empty-state">导入 PDF 后，这里会显示当前页原文内容。</div>}
+            <div className="reader-tools">
+              <input value={keyword} onChange={(e) => setKeyword(e.target.value)} placeholder="搜索当前页片段（ID 或关键词）" />
+              <div className="tag-filter-row">
+                <button className={`secondary chip ${activeTag === 'all' ? 'chip-active' : ''}`} onClick={() => setActiveTag('all')}>全部</button>
+                <button className={`secondary chip ${activeTag === 'novelty' ? 'chip-active' : ''}`} onClick={() => setActiveTag('novelty')}>原创</button>
+                <button className={`secondary chip ${activeTag === 'method' ? 'chip-active' : ''}`} onClick={() => setActiveTag('method')}>方法</button>
+                <button className={`secondary chip ${activeTag === 'result' ? 'chip-active' : ''}`} onClick={() => setActiveTag('result')}>结果</button>
+                <button className={`secondary chip ${activeTag === 'limitation' ? 'chip-active' : ''}`} onClick={() => setActiveTag('limitation')}>局限</button>
+              </div>
+            </div>
+            {filteredPageSegments.length ? <div className="paper-flow">{filteredPageSegments.map((segment) => <article key={segment.id} className="paper-block"><div className="paper-block-meta">{segment.id}</div><div className="paper-block-text">{segment.text}</div></article>)}</div> : <div className="empty-state">{segments.length ? '当前筛选条件下没有匹配片段。' : '导入 PDF 后，这里会显示当前页原文内容。'}</div>}
           </div>
 
           <div className="pdf-pane panel translation-pane">
@@ -427,6 +454,7 @@ function App() {
                 <label>Base URL<input value={settings.baseUrl} onChange={(e) => setSettings((prev) => ({ ...prev, baseUrl: e.target.value }))} /></label>
                 <label>Model<input value={settings.model} onChange={(e) => setSettings((prev) => ({ ...prev, model: e.target.value }))} /></label>
                 <label>API Key<input type="password" value={settings.apiKey} onChange={(e) => setSettings((prev) => ({ ...prev, apiKey: e.target.value }))} /></label>
+                <button className="secondary" onClick={() => setSettings((prev) => ({ ...prev, apiKey: '' }))}>清空本地 API Key</button>
               </section>
             ) : null}
 

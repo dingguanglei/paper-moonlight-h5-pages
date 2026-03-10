@@ -23,6 +23,9 @@ git push origin main
 
 推送到 `main` 后，GitHub Pages workflow 会自动构建并部署。
 
+新增保障：
+- `CI` workflow（`.github/workflows/ci.yml`）会在 PR / push 时执行 `npm run check`，提前拦截构建或 lint 问题
+
 ## Pages URL
 
 - `https://dingguanglei.github.io/paper-moonlight-h5-pages/`
