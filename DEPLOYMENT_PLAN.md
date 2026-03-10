@@ -19,8 +19,10 @@ npm run build
 npm run preflight
 git add .
 git commit -m "feat: ..."
-git push origin main
+git push -u origin main
 ```
+
+> 首次推送建议使用 `-u` 绑定上游分支，后续可直接 `git push`。
 
 推送到 `main` 后，GitHub Pages workflow 会自动构建并部署。
 
