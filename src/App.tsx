@@ -90,9 +90,7 @@ function chunkText(text: string, page: number) {
     .filter(Boolean)
 
   return rawParagraphs.flatMap((paragraph, index) => {
-    if (paragraph.length <= 420) {
-      return [{ id: `p${page}-${index}-0`, page, text: paragraph }]
-    }
+    if (paragraph.length <= 420) return [{ id: `p${page}-${index}-0`, page, text: paragraph }]
     const slices: Segment[] = []
     const parts = paragraph.match(/[^.!?。！？]+[.!?。！？]?/g) ?? [paragraph]
     let buf = ''
@@ -122,9 +120,7 @@ function extractOutline(fullText: string): OutlineItem[] {
       continue
     }
     const isHeading = /^(\d+(\.\d+)*)\s+.+/.test(line) || /^[A-Z][A-Z\s-]{6,}$/.test(line)
-    if (isHeading && line.length < 120) {
-      items.push({ id: `outline-${currentPage}-${items.length}`, title: line, page: currentPage })
-    }
+    if (isHeading && line.length < 120) items.push({ id: `outline-${currentPage}-${items.length}`, title: line, page: currentPage })
   }
   return items.slice(0, 40)
 }
@@ -134,27 +130,15 @@ async function extractPdfSegments(buffer: ArrayBuffer) {
   const pdf = await pdfjsLib.getDocument({ data: buffer }).promise
   const segments: Segment[] = []
   let fullText = ''
-
   for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
     const page = await pdf.getPage(pageNumber)
     const textContent = await page.getTextContent()
-    const lines = textContent.items
-      .map((item) => ('str' in item ? item.str : ''))
-      .join(' ')
-      .replace(/\s+/g, ' ')
-      .trim()
-
+    const lines = textContent.items.map((item) => ('str' in item ? item.str : '')).join(' ').replace(/\s+/g, ' ').trim()
     if (!lines) continue
     fullText += `\n\n[Page ${pageNumber}]\n${lines}`
     segments.push(...chunkText(lines, pageNumber))
   }
-
-  return {
-    pageCount: pdf.numPages,
-    fullText: fullText.trim(),
-    segments,
-    outline: extractOutline(fullText.trim()),
-  }
+  return { pageCount: pdf.numPages, fullText: fullText.trim(), segments, outline: extractOutline(fullText.trim()) }
 }
 
 function normalizeJsonBlock(text: string) {
@@ -166,37 +150,16 @@ function normalizeJsonBlock(text: string) {
 function normalizePdfUrl(raw: string) {
   const trimmed = raw.trim()
   if (!trimmed) return ''
-  if (/arxiv\.org\/abs\//i.test(trimmed)) {
-    return trimmed.replace('/abs/', '/pdf/').replace(/(#.*)?$/, '.pdf')
-  }
+  if (/arxiv\.org\/abs\//i.test(trimmed)) return trimmed.replace('/abs/', '/pdf/').replace(/(#.*)?$/, '.pdf')
   return trimmed
 }
 
-async function callModel({
-  baseUrl,
-  apiKey,
-  model,
-  systemPrompt,
-  messages,
-}: {
-  baseUrl: string
-  apiKey: string
-  model: string
-  systemPrompt: string
-  messages: ChatMessage[]
-}) {
+async function callModel({ baseUrl, apiKey, model, systemPrompt, messages }: { baseUrl: string; apiKey: string; model: string; systemPrompt: string; messages: ChatMessage[] }) {
   const url = `${baseUrl.replace(/\/$/, '')}/chat/completions`
   const resp = await fetch(url, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      model,
-      temperature: 0.2,
-      messages: [{ role: 'system', content: systemPrompt }, ...messages],
-    }),
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+    body: JSON.stringify({ model, temperature: 0.2, messages: [{ role: 'system', content: systemPrompt }, ...messages] }),
   })
   if (!resp.ok) {
     const errText = await resp.text()
@@ -232,21 +195,18 @@ function App() {
   const [modelPanelOpen, setModelPanelOpen] = useState(true)
   const [analysisReady, setAnalysisReady] = useState(false)
   const [translatedPages, setTranslatedPages] = useState<Record<number, string[]>>({})
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+  const [chatCollapsed, setChatCollapsed] = useState(false)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
 
   useEffect(() => {
     localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings))
   }, [settings])
-
   useEffect(() => {
     localStorage.setItem(RECENT_URLS_KEY, JSON.stringify(recentUrls.slice(0, 5)))
   }, [recentUrls])
 
-  const pageSegments = useMemo(() => {
-    if (selectedPage === 'all') return segments.filter((s) => s.page === 1)
-    return segments.filter((segment) => segment.page === selectedPage)
-  }, [segments, selectedPage])
-
+  const pageSegments = useMemo(() => (selectedPage === 'all' ? segments : segments.filter((segment) => segment.page === selectedPage)), [segments, selectedPage])
   const tagStats = useMemo(() => ({
     novelty: analysis.filter((item) => item.tag === 'novelty').length,
     method: analysis.filter((item) => item.tag === 'method').length,
@@ -260,16 +220,10 @@ function App() {
       const subset = parsedSegments.slice(0, 120).map((segment) => ({ id: segment.id, page: segment.page, text: segment.text }))
       const content = await callModel({
         ...settings,
-        messages: [{
-          role: 'user',
-          content:
-            'Read these paper segments and return JSON with {summary, highlights}. highlights should contain segmentId, tag(novelty|method|result|limitation), reason. summary should be concise Chinese markdown. ' +
-            JSON.stringify(subset),
-        }],
+        messages: [{ role: 'user', content: 'Read these paper segments and return JSON with {summary, highlights}. highlights should contain segmentId, tag(novelty|method|result|limitation), reason. summary should be concise Chinese markdown. ' + JSON.stringify(subset) }],
       })
       const parsed = JSON.parse(normalizeJsonBlock(content)) as AnalysisBundle
       setAnalysis(parsed.highlights || [])
-      setQaHistory((prev) => prev)
       setAnswer(parsed.summary || '')
       setAnalysisReady(true)
     } catch {
@@ -284,12 +238,7 @@ function App() {
       const payload = segmentsForPage.slice(0, 24).map(({ id, text }) => ({ id, text }))
       const content = await callModel({
         ...settings,
-        messages: [{
-          role: 'user',
-          content:
-            'Translate the following paper passages into Chinese for side-by-side reading. Keep terminology accurate and concise. Return JSON array [{id, translation}]. ' +
-            JSON.stringify(payload),
-        }],
+        messages: [{ role: 'user', content: 'Translate the following paper passages into Chinese for side-by-side reading. Keep terminology accurate and concise. Return JSON array [{id, translation}]. ' + JSON.stringify(payload) }],
       })
       const parsed = JSON.parse(normalizeJsonBlock(content)) as Array<{ id: string; translation: string }>
       setTranslatedPages((prev) => ({ ...prev, [page]: parsed.map((item) => `${item.id}｜${item.translation}`) }))
@@ -344,9 +293,7 @@ function App() {
       const resp = await fetch(normalized)
       if (!resp.ok) throw new Error(`PDF 下载失败：${resp.status}`)
       const contentType = resp.headers.get('content-type') || ''
-      if (!contentType.includes('pdf') && !normalized.toLowerCase().endsWith('.pdf')) {
-        throw new Error('URL 返回内容不是 PDF，请检查链接或使用可直连 PDF 的地址')
-      }
+      if (!contentType.includes('pdf') && !normalized.toLowerCase().endsWith('.pdf')) throw new Error('URL 返回内容不是 PDF，请检查链接或使用可直连 PDF 的地址')
       const buffer = await resp.arrayBuffer()
       await handlePdfBuffer(buffer, normalized)
       setPdfUrl(normalized)
@@ -365,15 +312,11 @@ function App() {
       const context = segments.slice(0, 160).map((s) => `[${s.id}] ${s.text}`).join('\n')
       const content = await callModel({
         ...settings,
-        messages: [{
-          role: 'user',
-          content:
-            'Answer only using the paper text. Cite useful segment ids in brackets when possible. Also mention novelty/method/result/limitation when relevant.\n\n' +
-            `Paper text:\n${context}\n\nQuestion: ${question}`,
-        }],
+        messages: [{ role: 'user', content: 'Answer only using the paper text. Cite useful segment ids in brackets when possible. Also mention novelty/method/result/limitation when relevant.\n\n' + `Paper text:\n${context}\n\nQuestion: ${question}` }],
       })
       setAnswer(content)
       setQaHistory((prev) => [{ id: crypto.randomUUID(), question, answer: content }, ...prev].slice(0, 10))
+      setQuestion('')
     } catch (e) {
       setError(e instanceof Error ? e.message : '问答失败')
     } finally {
@@ -383,186 +326,122 @@ function App() {
 
   async function jumpToPage(page: number) {
     setSelectedPage(page)
-    if (!translatedPages[page]) {
-      await translateCurrentPage(segments.filter((s) => s.page === page), page)
-    }
+    if (!translatedPages[page]) await translateCurrentPage(segments.filter((s) => s.page === page), page)
   }
 
   return (
-    <div className="sunlight-layout">
+    <div className={`sunlight-layout ${sidebarCollapsed ? 'sidebar-collapsed' : ''}`}>
       <aside className="left-column">
-        <div className="logo-card">
-          <div className="logo-mark">S</div>
-          <div>
-            <div className="eyebrow">AI paper reader</div>
-            <h1>Sunlight</h1>
-          </div>
-        </div>
-
-        <section className="panel">
-          <h2>{pdfName ? '论文导航' : '导入论文'}</h2>
-          {!pdfName ? (
-            <>
-              <button onClick={() => fileInputRef.current?.click()}>上传 PDF</button>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="application/pdf"
-                hidden
-                onChange={(e) => {
-                  const file = e.target.files?.[0]
-                  if (file) void onUploadFile(file)
-                }}
-              />
-              <div
-                className={`dropzone ${dragging ? 'dragging' : ''}`}
-                onDragOver={(e) => {
-                  e.preventDefault()
-                  setDragging(true)
-                }}
-                onDragLeave={() => setDragging(false)}
-                onDrop={(e) => {
-                  e.preventDefault()
-                  setDragging(false)
-                  const file = e.dataTransfer.files?.[0]
-                  if (file) void onUploadFile(file)
-                }}
-              >
-                拖拽 PDF 到这里
-              </div>
-              <label>
-                PDF / arXiv 链接
-                <input value={pdfUrl} onChange={(e) => setPdfUrl(e.target.value)} placeholder="https://.../paper.pdf" />
-              </label>
-              <button className="secondary" onClick={() => onLoadFromUrl()}>从链接加载</button>
-              {!!recentUrls.length && (
-                <div className="recent-list">
-                  {recentUrls.map((url) => (
-                    <button key={url} className="secondary recent-item" onClick={() => onLoadFromUrl(url)}>{url}</button>
-                  ))}
+        <div className="sidebar-shell">
+          <div className="sidebar-top">
+            <button className="sidebar-toggle" onClick={() => setSidebarCollapsed((v) => !v)}>{sidebarCollapsed ? '→' : '←'}</button>
+            {!sidebarCollapsed ? (
+              <div className="logo-card">
+                <div className="logo-mark">S</div>
+                <div>
+                  <div className="eyebrow">AI paper reader</div>
+                  <h1>Sunlight</h1>
                 </div>
+              </div>
+            ) : null}
+          </div>
+
+          {!sidebarCollapsed ? (
+            <section className="panel sidebar-panel">
+              <h2>{pdfName ? '论文大纲' : '导入论文'}</h2>
+              {!pdfName ? (
+                <>
+                  <button onClick={() => fileInputRef.current?.click()}>上传 PDF</button>
+                  <input ref={fileInputRef} type="file" accept="application/pdf" hidden onChange={(e) => { const file = e.target.files?.[0]; if (file) void onUploadFile(file) }} />
+                  <div
+                    className={`dropzone ${dragging ? 'dragging' : ''}`}
+                    onDragOver={(e) => { e.preventDefault(); setDragging(true) }}
+                    onDragLeave={() => setDragging(false)}
+                    onDrop={(e) => { e.preventDefault(); setDragging(false); const file = e.dataTransfer.files?.[0]; if (file) void onUploadFile(file) }}
+                  >拖拽 PDF 到这里</div>
+                  <label>
+                    PDF / arXiv 链接
+                    <input value={pdfUrl} onChange={(e) => setPdfUrl(e.target.value)} placeholder="https://.../paper.pdf" />
+                  </label>
+                  <button className="secondary" onClick={() => onLoadFromUrl()}>从链接加载</button>
+                  {!!recentUrls.length && <div className="recent-list">{recentUrls.map((url) => <button key={url} className="secondary recent-item" onClick={() => onLoadFromUrl(url)}>{url}</button>)}</div>}
+                </>
+              ) : (
+                <>
+                  <div className="doc-meta"><strong>{pdfName}</strong><span>{pageCount} 页</span></div>
+                  <div className="outline-list">
+                    <button className={`outline-item ${selectedPage === 'all' ? 'active' : ''}`} onClick={() => setSelectedPage('all')}><span className="outline-page">ALL</span><span>浏览全文片段</span></button>
+                    {outline.length ? outline.map((item) => (
+                      <button key={item.id} className={`outline-item ${selectedPage === item.page ? 'active' : ''}`} onClick={() => void jumpToPage(item.page)}>
+                        <span className="outline-page">P{item.page}</span><span>{item.title}</span>
+                      </button>
+                    )) : Array.from({ length: pageCount }, (_, i) => i + 1).map((page) => (
+                      <button key={page} className={`outline-item ${selectedPage === page ? 'active' : ''}`} onClick={() => void jumpToPage(page)}>
+                        <span className="outline-page">P{page}</span><span>第 {page} 页</span>
+                      </button>
+                    ))}
+                  </div>
+                </>
               )}
-            </>
-          ) : (
-            <>
-              <div className="doc-meta">
-                <strong>{pdfName}</strong>
-                <span>{pageCount} 页</span>
-              </div>
-              <div className="outline-list">
-                {outline.length ? outline.map((item) => (
-                  <button key={item.id} className={`outline-item ${selectedPage === item.page ? 'active' : ''}`} onClick={() => void jumpToPage(item.page)}>
-                    <span className="outline-page">P{item.page}</span>
-                    <span>{item.title}</span>
-                  </button>
-                )) : Array.from({ length: pageCount }, (_, i) => i + 1).map((page) => (
-                  <button key={page} className={`outline-item ${selectedPage === page ? 'active' : ''}`} onClick={() => void jumpToPage(page)}>
-                    <span className="outline-page">P{page}</span>
-                    <span>第 {page} 页</span>
-                  </button>
-                ))}
-              </div>
-            </>
-          )}
-        </section>
+            </section>
+          ) : null}
+        </div>
       </aside>
 
       <main className="center-column">
-        <div className="pdf-header">
-          <div>
-            <div className="eyebrow">Original PDF + parallel translation</div>
-            <h2>{pdfName || '等待导入论文'}</h2>
-          </div>
-          {selectedPage !== 'all' ? <div className="page-pill">Page {selectedPage}</div> : null}
-        </div>
-
-        <section className="pdf-grid">
+        <section className="pdf-grid full-height">
           <div className="pdf-pane panel paper-pane">
-            <div className="pane-title">原文</div>
-            {pageSegments.length ? (
-              <div className="paper-flow">
-                {pageSegments.map((segment) => (
-                  <article key={segment.id} className="paper-block">
-                    <div className="paper-block-meta">{segment.id}</div>
-                    <div className="paper-block-text">{segment.text}</div>
-                  </article>
-                ))}
-              </div>
-            ) : (
-              <div className="empty-state">导入 PDF 后，这里会显示当前页原文内容。</div>
-            )}
+            <div className="pane-title-row"><div className="pane-title">原文</div>{selectedPage !== 'all' ? <div className="page-pill">Page {selectedPage}</div> : null}</div>
+            {pageSegments.length ? <div className="paper-flow">{pageSegments.map((segment) => <article key={segment.id} className="paper-block"><div className="paper-block-meta">{segment.id}</div><div className="paper-block-text">{segment.text}</div></article>)}</div> : <div className="empty-state">导入 PDF 后，这里会显示当前页原文内容。</div>}
           </div>
 
           <div className="pdf-pane panel translation-pane">
             <div className="pane-title">对照翻译</div>
-            {selectedPage !== 'all' && translatedPages[selectedPage]?.length ? (
-              <div className="translation-flow">
-                {translatedPages[selectedPage].map((line, idx) => (
-                  <article key={`${selectedPage}-${idx}`} className="translation-block">{line}</article>
-                ))}
-              </div>
-            ) : (
-              <div className="empty-state">切换到某一页后，这里会显示对应页的 AI 对照翻译。</div>
-            )}
+            {selectedPage !== 'all' && translatedPages[selectedPage]?.length ? <div className="translation-flow">{translatedPages[selectedPage].map((line, idx) => <article key={`${selectedPage}-${idx}`} className="translation-block">{line}</article>)}</div> : <div className="empty-state">切换到某一页后，这里会显示对应页的 AI 对照翻译。</div>}
           </div>
         </section>
       </main>
 
-      <aside className="right-column">
-        <section className="panel model-panel">
-          <div className="panel-header-row">
-            <h2>模型配置</h2>
-            <button className="secondary collapse-btn" onClick={() => setModelPanelOpen((v) => !v)}>{modelPanelOpen ? '收起' : '展开'}</button>
-          </div>
-          {modelPanelOpen ? (
-            <>
-              <div className="preset-row">
-                {providerPresets.map((preset) => (
-                  <button key={preset.id} className="secondary chip" onClick={() => setSettings((prev) => ({ ...prev, baseUrl: preset.baseUrl, model: preset.model }))}>{preset.label}</button>
-                ))}
-              </div>
-              <label>
-                Base URL
-                <input value={settings.baseUrl} onChange={(e) => setSettings((prev) => ({ ...prev, baseUrl: e.target.value }))} />
-              </label>
-              <label>
-                Model
-                <input value={settings.model} onChange={(e) => setSettings((prev) => ({ ...prev, model: e.target.value }))} />
-              </label>
-              <label>
-                API Key
-                <input type="password" value={settings.apiKey} onChange={(e) => setSettings((prev) => ({ ...prev, apiKey: e.target.value }))} />
-              </label>
-            </>
-          ) : null}
-        </section>
-
-        <section className="panel ai-panel">
-          <div className="panel-header-row">
-            <h2>AI 论文助手</h2>
-            <div className="tag-row">
+      <div className={`floating-chat ${chatCollapsed ? 'collapsed' : ''}`}>
+        <div className="floating-chat-header">
+          <div>
+            <strong>AI 论文助手</strong>
+            <div className="mini-tags">
               <span className="tag tag-novelty">原创 {tagStats.novelty}</span>
               <span className="tag tag-method">方法 {tagStats.method}</span>
               <span className="tag tag-result">结果 {tagStats.result}</span>
               <span className="tag tag-limitation">局限 {tagStats.limitation}</span>
             </div>
           </div>
-          <div className="chat-window">
-            {analysisReady ? <div className="assistant-card">我已默认分析这篇论文的原创点、方法、结果和局限，你可以直接追问。</div> : <div className="assistant-card muted-card">导入并配置模型后，我会自动生成论文结构化理解。</div>}
-            {answer ? <div className="assistant-card">{answer}</div> : null}
-            {qaHistory.map((item) => (
-              <div key={item.id} className="chat-turns">
-                <div className="user-card">{item.question}</div>
-                <div className="assistant-card">{item.answer}</div>
-              </div>
-            ))}
+          <div className="floating-actions">
+            <button className="secondary collapse-btn" onClick={() => setModelPanelOpen((v) => !v)}>{modelPanelOpen ? '模型收起' : '模型展开'}</button>
+            <button className="secondary collapse-btn" onClick={() => setChatCollapsed((v) => !v)}>{chatCollapsed ? '展开' : '收起'}</button>
           </div>
-          <div className="chat-input-row">
-            <textarea value={question} onChange={(e) => setQuestion(e.target.value)} placeholder="针对当前论文提问，比如：这篇论文的方法创新点是什么？" />
-            <button onClick={askQuestion} disabled={!question || !settings.apiKey || !segments.length}>发送</button>
-          </div>
-        </section>
-      </aside>
+        </div>
+
+        {!chatCollapsed ? (
+          <>
+            {modelPanelOpen ? (
+              <section className="floating-panel-block model-block">
+                <div className="preset-row">{providerPresets.map((preset) => <button key={preset.id} className="secondary chip" onClick={() => setSettings((prev) => ({ ...prev, baseUrl: preset.baseUrl, model: preset.model }))}>{preset.label}</button>)}</div>
+                <label>Base URL<input value={settings.baseUrl} onChange={(e) => setSettings((prev) => ({ ...prev, baseUrl: e.target.value }))} /></label>
+                <label>Model<input value={settings.model} onChange={(e) => setSettings((prev) => ({ ...prev, model: e.target.value }))} /></label>
+                <label>API Key<input type="password" value={settings.apiKey} onChange={(e) => setSettings((prev) => ({ ...prev, apiKey: e.target.value }))} /></label>
+              </section>
+            ) : null}
+
+            <div className="chat-window">
+              {analysisReady ? <div className="assistant-card">我已默认分析这篇论文的原创点、方法、结果和局限，你可以直接追问。</div> : <div className="assistant-card muted-card">先填写模型，再上传论文。我会自动生成结构化理解和默认标签。</div>}
+              {answer ? <div className="assistant-card">{answer}</div> : null}
+              {qaHistory.map((item) => <div key={item.id} className="chat-turns"><div className="user-card">{item.question}</div><div className="assistant-card">{item.answer}</div></div>)}
+            </div>
+            <div className="chat-input-row">
+              <textarea value={question} onChange={(e) => setQuestion(e.target.value)} placeholder="针对当前论文提问，比如：这篇论文的方法创新点是什么？" />
+              <button onClick={askQuestion} disabled={!question || !settings.apiKey || !segments.length}>发送</button>
+            </div>
+          </>
+        ) : null}
+      </div>
 
       {busy ? <div className="status-banner">{busy}</div> : null}
       {progress ? <div className="status-banner">{progress}</div> : null}
