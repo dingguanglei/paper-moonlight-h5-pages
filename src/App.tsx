@@ -68,8 +68,8 @@ const providerPresets: ProviderPreset[] = [
   },
 ]
 
-const SETTINGS_KEY = 'paper-moonlight-h5-settings'
-const RECENT_URLS_KEY = 'paper-moonlight-h5-recent-urls'
+const SETTINGS_KEY = 'sunlight-settings'
+const RECENT_URLS_KEY = 'sunlight-recent-urls'
 
 const defaultSettings: Settings = {
   baseUrl: providerPresets[0].baseUrl,
@@ -499,7 +499,7 @@ function App() {
           <div className="brand-mark">M</div>
           <div>
             <div className="eyebrow">AI Paper Reader</div>
-            <h1>Paper Moonlight H5</h1>
+            <h1>Sunlight</h1>
           </div>
         </div>
         <div className="topbar-center">

@@ -1,6 +1,6 @@
-# Paper Moonlight H5
+# Sunlight
 
-A static, browser-only paper reading web app inspired by Moonlight.
+A static, browser-only paper reading web app for AI-assisted paper reading.
 
 ## Features
 
