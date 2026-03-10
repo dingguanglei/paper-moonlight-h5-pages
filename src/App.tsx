@@ -288,6 +288,7 @@ function App() {
       setError(e instanceof Error ? e.message : 'PDF 解析失败')
     } finally {
       setBusy('')
+      setProgress('')
     }
   }
 
