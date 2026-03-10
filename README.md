@@ -79,6 +79,8 @@ git push origin main
 
 Detailed notes: see `DEPLOYMENT_PLAN.md`.
 
+For repository collaboration hygiene and branch/protection recommendations, see `GITHUB_REPO_ORGANIZATION.md`.
+
 ## Optional legacy publish script
 
 If you still need to sync `dist/` to another repo/directory manually:

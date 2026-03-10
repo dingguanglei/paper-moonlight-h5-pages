@@ -20,11 +20,14 @@ URL="http://${HOST}:${PORT}/paper-moonlight-h5-pages/"
 
 npm run build >/dev/null
 
-npm run preview -- --host "$HOST" --port "$PORT" >/tmp/paper-moonlight-h5-smoke.log 2>&1 &
+node ./node_modules/vite/bin/vite.js preview --host "$HOST" --port "$PORT" >/tmp/paper-moonlight-h5-smoke.log 2>&1 &
 PREVIEW_PID=$!
 
 cleanup() {
+  # npm 子进程退出后可能遗留 vite/esbuild，显式回收整棵进程树
+  pkill -TERM -P "$PREVIEW_PID" >/dev/null 2>&1 || true
   kill "$PREVIEW_PID" >/dev/null 2>&1 || true
+  wait "$PREVIEW_PID" >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
 
