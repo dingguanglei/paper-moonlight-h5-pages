@@ -9,7 +9,8 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "check": "npm run lint && npm run build",
-    "publish:pages": "./scripts/publish-pages.sh"
+    "publish:pages": "./scripts/publish-pages.sh",
+    "preflight": "./scripts/preflight.sh"
   },
   "dependencies": {
     "pdfjs-dist": "^5.5.207",

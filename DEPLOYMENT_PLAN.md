@@ -16,6 +16,7 @@ npm install
 npm run dev
 npm run lint
 npm run build
+npm run preflight
 git add .
 git commit -m "feat: ..."
 git push origin main

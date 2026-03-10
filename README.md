@@ -56,8 +56,13 @@ npm run lint
 ## Release preflight (recommended)
 
 ```bash
-npm run check
+npm run preflight
 ```
+
+This will run:
+- lint + build checks
+- tracked-file secret pattern scan (avoid leaking test API key/base URL)
+- build output base path verification for GitHub Pages
 
 ## Publish to GitHub Pages repo
 
