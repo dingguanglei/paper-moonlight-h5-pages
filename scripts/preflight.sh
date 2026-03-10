@@ -4,10 +4,13 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
-echo "[1/3] Lint + Build"
+echo "[1/4] Lint + Build"
 npm run check
 
-echo "[2/3] Secret pattern scan (tracked files)"
+echo "[2/4] Local preview smoke check"
+npm run smoke
+
+echo "[3/4] Secret pattern scan (tracked files)"
 # 仅匹配“疑似真实密钥/令牌”形式，避免把变量名误报成泄露
 # 忽略依赖、构建产物、git 元数据与示例文件
 KEY_PATTERN='(sk-[A-Za-z0-9]{20,}|Bearer\s+[A-Za-z0-9_\-\.]{20,}|OPENAI_API_KEY\s*=\s*[^\s]+|API_KEY\s*=\s*[^\s]+)'
@@ -17,7 +20,7 @@ if git ls-files | grep -Ev '^(node_modules/|dist/|\.git/|\.env\.example$)' | xar
   exit 1
 fi
 
-echo "[3/3] Dist output check"
+echo "[4/4] Dist output check"
 if [[ ! -f dist/index.html ]]; then
   echo "❌ dist/index.html not found. Build output missing."
   exit 1

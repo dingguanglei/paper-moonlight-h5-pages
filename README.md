@@ -61,6 +61,7 @@ npm run preflight
 
 This will run:
 - lint + build checks
+- local preview smoke check (ensure built site can be served)
 - tracked-file secret pattern scan (avoid leaking test API key/base URL)
 - build output base path verification for GitHub Pages
 
