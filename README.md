@@ -4,7 +4,8 @@ A static, browser-only paper reading web app inspired by Moonlight.
 
 ## Features
 
-- Upload a PDF or load a PDF from URL
+- Upload PDF (button + drag-and-drop)
+- Import PDF from URL (supports direct PDF URL and arXiv `abs` URL auto-conversion)
 - Parse PDF text in-browser with pdf.js
 - Side-by-side reading / translation view
 - AI-generated summary
@@ -13,11 +14,19 @@ A static, browser-only paper reading web app inspired by Moonlight.
   - method
   - result
   - limitation
-- PDF-grounded Q&A
+- Tag filtering + keyword search in reader
+- PDF-grounded Q&A + recent Q&A history
 - User-supplied Base URL / Model / API Key
 - No login
 - No backend
 - Static hosting friendly
+
+## Security Notes
+
+- No API key is hardcoded in source, git, or README.
+- API key is entered by user at runtime and stored only in browser `localStorage`.
+- A `清空本地 API Key` button is provided for quick cleanup on shared devices.
+- This app calls an OpenAI-compatible `/chat/completions` endpoint directly from the browser.
 
 ## Tech
 
@@ -38,7 +47,16 @@ npm run dev
 npm run build
 ```
 
-## Notes
+## Lint
 
-This app calls an OpenAI-compatible `/chat/completions` endpoint directly from the browser.
-Users should provide their own API key and compatible base URL.
+```bash
+npm run lint
+```
+
+## Publish to GitHub Pages repo
+
+```bash
+./scripts/publish-pages.sh
+```
+
+This publishes the built `dist/` output to the separate public Pages repository.

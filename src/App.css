@@ -134,6 +134,39 @@ label {
   gap: 1rem;
 }
 
+.dropzone {
+  border: 1px dashed #2b3d5a;
+  background: #0d1626;
+  border-radius: 12px;
+  padding: 0.85rem;
+  text-align: center;
+  color: #9fb0ca;
+}
+
+.dropzone.dragging {
+  border-color: #6d7cff;
+  color: #dce6ff;
+}
+
+.recent-urls {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.url-chip {
+  text-align: left;
+  background: #1a2234;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.reader-filters {
+  display: grid;
+  grid-template-columns: 1fr 180px;
+  gap: 0.6rem;
+}
+
 .large-panel {
   min-height: 80vh;
 }
@@ -180,6 +213,23 @@ label {
   align-content: start;
 }
 
+.qa-history {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.qa-history details {
+  background: #0f1728;
+  border: 1px solid #263248;
+  border-radius: 10px;
+  padding: 0.5rem 0.65rem;
+}
+
+.qa-history summary {
+  cursor: pointer;
+  color: #b8c5db;
+}
+
 .tag {
   display: inline-flex;
   align-items: center;
@@ -220,6 +270,10 @@ label {
   }
 
   .top-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .reader-filters {
     grid-template-columns: 1fr;
   }
 }
