@@ -62,7 +62,7 @@ const providerPresets: ProviderPreset[] = [
   },
   {
     id: 'siliconflow',
-    label: 'SiliconFlow (OpenAI API)',
+    label: 'SiliconFlow',
     baseUrl: 'https://api.siliconflow.cn/v1',
     model: 'Qwen/Qwen2.5-72B-Instruct',
   },
@@ -222,11 +222,12 @@ function App() {
   const [selectedPage, setSelectedPage] = useState<number | 'all'>('all')
   const [searchText, setSearchText] = useState('')
   const [activeTag, setActiveTag] = useState<HighlightTag | 'all'>('all')
-  const [busy, setBusy] = useState<string>('')
-  const [progress, setProgress] = useState<string>('')
+  const [busy, setBusy] = useState('')
+  const [progress, setProgress] = useState('')
   const [error, setError] = useState('')
   const [readerMode, setReaderMode] = useState<'original' | 'translated'>('original')
   const [dragging, setDragging] = useState(false)
+  const [activeSidebar, setActiveSidebar] = useState<'document' | 'model'>('document')
   const fileInputRef = useRef<HTMLInputElement | null>(null)
 
   useEffect(() => {
@@ -249,7 +250,11 @@ function App() {
     const keyword = searchText.trim().toLowerCase()
     return segments.filter((segment) => {
       if (selectedPage !== 'all' && segment.page !== selectedPage) return false
-      if (keyword && !segment.text.toLowerCase().includes(keyword) && !segment.translation?.toLowerCase().includes(keyword)) {
+      if (
+        keyword &&
+        !segment.text.toLowerCase().includes(keyword) &&
+        !segment.translation?.toLowerCase().includes(keyword)
+      ) {
         return false
       }
       if (activeTag !== 'all' && !(tagMap[segment.id] || []).some((t) => t.tag === activeTag)) return false
@@ -257,10 +262,25 @@ function App() {
     })
   }, [segments, selectedPage, searchText, activeTag, tagMap])
 
+  const readingStats = useMemo(() => {
+    const novelty = analysis.filter((item) => item.tag === 'novelty').length
+    const method = analysis.filter((item) => item.tag === 'method').length
+    const result = analysis.filter((item) => item.tag === 'result').length
+    const limitation = analysis.filter((item) => item.tag === 'limitation').length
+    return {
+      novelty,
+      method,
+      result,
+      limitation,
+      totalSegments: segments.length,
+      visibleSegments: visibleSegments.length,
+    }
+  }, [analysis, segments.length, visibleSegments.length])
+
   async function handlePdfBuffer(buffer: ArrayBuffer, name: string) {
     try {
-      setBusy('正在解析 PDF...')
-      setProgress('')
+      setBusy('正在解析 PDF…')
+      setProgress('重建页面与文本块')
       setError('')
       const parsed = await extractPdfSegments(buffer)
       setPdfName(name)
@@ -275,11 +295,12 @@ function App() {
       setReaderMode('original')
       setSearchText('')
       setActiveTag('all')
+      setActiveSidebar('document')
+      setProgress(`已载入 ${parsed.pageCount} 页，${parsed.segments.length} 个阅读块`)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'PDF 解析失败')
     } finally {
       setBusy('')
-      setProgress('')
     }
   }
 
@@ -296,8 +317,8 @@ function App() {
     const normalized = normalizePdfUrl(target ?? pdfUrl)
     if (!normalized) return
     try {
-      setBusy('正在下载 PDF...')
-      setProgress('')
+      setBusy('正在下载 PDF…')
+      setProgress('准备从链接导入论文')
       setError('')
       const resp = await fetch(normalized)
       if (!resp.ok) throw new Error(`PDF 下载失败：${resp.status}`)
@@ -319,7 +340,7 @@ function App() {
   async function runSummaryAndHighlights() {
     if (!fullText) return
     try {
-      setBusy('正在生成摘要与高亮...')
+      setBusy('正在生成摘要与结构高亮…')
       setProgress('抽取前 120 段进行结构化分析')
       setError('')
       const subset = segments.slice(0, 120).map((segment) => ({
@@ -355,7 +376,7 @@ function App() {
   async function translateVisibleSegments() {
     if (!visibleSegments.length) return
     try {
-      setBusy('正在翻译当前视图...')
+      setBusy('正在翻译当前视图…')
       setError('')
       const chunks: Array<Array<{ id: string; text: string }>> = []
       const payload = visibleSegments.map(({ id, text }) => ({ id, text }))
@@ -382,21 +403,24 @@ function App() {
       }
 
       setSegments((prev) =>
-        prev.map((segment) => (translatedMap[segment.id] ? { ...segment, translation: translatedMap[segment.id] } : segment)),
+        prev.map((segment) =>
+          translatedMap[segment.id] ? { ...segment, translation: translatedMap[segment.id] } : segment,
+        ),
       )
       setReaderMode('translated')
+      setProgress(`翻译完成，共 ${Object.keys(translatedMap).length} 段`)
     } catch (e) {
       setError(e instanceof Error ? e.message : '翻译失败')
     } finally {
       setBusy('')
-      setProgress('')
     }
   }
 
   async function askQuestion() {
     if (!question.trim() || !fullText) return
     try {
-      setBusy('正在回答问题...')
+      setBusy('正在回答问题…')
+      setProgress('聚合论文上下文并生成回答')
       setError('')
       const context = segments.slice(0, 160).map((s) => `[${s.id}] ${s.text}`).join('\n')
       const content = await callModel({
@@ -419,186 +443,261 @@ function App() {
     }
   }
 
-  const stats = useMemo(() => {
-    const novelty = analysis.filter((item) => item.tag === 'novelty').length
-    const method = analysis.filter((item) => item.tag === 'method').length
-    const result = analysis.filter((item) => item.tag === 'result').length
-    const limitation = analysis.filter((item) => item.tag === 'limitation').length
-    return { novelty, method, result, limitation }
-  }, [analysis])
-
   function clearLocalSecrets() {
     setSettings((prev) => ({ ...prev, apiKey: '' }))
   }
 
+  const heroDescription = pdfName
+    ? `${pdfName} · ${pageCount} 页 · ${segments.length} 个阅读块`
+    : '上传 PDF 或输入链接，进入对照阅读、摘要、高亮与问答工作流。'
+
   return (
-    <div className="app-shell">
-      <aside className="sidebar">
-        <div className="panel">
-          <h1>Paper Moonlight H5</h1>
-          <p className="muted">纯前端论文阅读器：PDF 解析、对照翻译、摘要、高亮、问答，全程浏览器直连模型。</p>
-          <p className="muted">安全提示：API Key 仅保存在当前浏览器 localStorage，不会上传到本仓库。</p>
-        </div>
-
-        <div className="panel">
-          <h2>模型配置</h2>
-          <div className="preset-list">
-            {providerPresets.map((preset) => (
-              <button
-                key={preset.id}
-                className="chip"
-                onClick={() =>
-                  setSettings((prev) => ({
-                    ...prev,
-                    baseUrl: preset.baseUrl,
-                    model: preset.model,
-                  }))
-                }
-              >
-                {preset.label}
-              </button>
-            ))}
+    <div className="shell">
+      <header className="topbar">
+        <div className="brand-block">
+          <div className="brand-mark">M</div>
+          <div>
+            <div className="eyebrow">AI Paper Reader</div>
+            <h1>Paper Moonlight H5</h1>
           </div>
-          <label>
-            Base URL
-            <input
-              value={settings.baseUrl}
-              onChange={(e) => setSettings((prev) => ({ ...prev, baseUrl: e.target.value }))}
-              placeholder="https://api.openai.com/v1"
-            />
-          </label>
-          <label>
-            Model
-            <input
-              value={settings.model}
-              onChange={(e) => setSettings((prev) => ({ ...prev, model: e.target.value }))}
-              placeholder="gpt-4.1-mini"
-            />
-          </label>
-          <label>
-            API Key
-            <input
-              type="password"
-              value={settings.apiKey}
-              onChange={(e) => setSettings((prev) => ({ ...prev, apiKey: e.target.value }))}
-              placeholder="sk-..."
-              autoComplete="off"
-            />
-          </label>
-          <button className="secondary" onClick={clearLocalSecrets}>清空本地 API Key</button>
         </div>
-
-        <div className="panel">
-          <h2>导入 PDF</h2>
+        <div className="topbar-center">
+          <p>{heroDescription}</p>
+        </div>
+        <div className="topbar-actions">
           <button onClick={() => fileInputRef.current?.click()}>上传 PDF</button>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="application/pdf"
-            hidden
-            onChange={(e) => {
-              const file = e.target.files?.[0]
-              if (file) void onUploadFile(file)
-            }}
-          />
-
-          <div
-            className={`dropzone ${dragging ? 'dragging' : ''}`}
-            onDragOver={(e) => {
-              e.preventDefault()
-              setDragging(true)
-            }}
-            onDragLeave={() => setDragging(false)}
-            onDrop={(e) => {
-              e.preventDefault()
-              setDragging(false)
-              const file = e.dataTransfer.files?.[0]
-              if (file) void onUploadFile(file)
-            }}
-          >
-            拖拽 PDF 到这里
-          </div>
-
-          <label>
-            PDF URL
-            <input
-              value={pdfUrl}
-              onChange={(e) => setPdfUrl(e.target.value)}
-              placeholder="https://.../paper.pdf 或 arxiv abs 链接"
-            />
-          </label>
-          <button className="secondary" onClick={() => onLoadFromUrl()}>从链接加载</button>
-
-          {!!recentUrls.length && (
-            <div className="recent-urls">
-              <div className="muted">最近导入</div>
-              {recentUrls.map((url) => (
-                <button key={url} className="url-chip" onClick={() => onLoadFromUrl(url)} title={url}>
-                  {url}
-                </button>
-              ))}
-            </div>
-          )}
-
-          {pdfName ? <p className="muted">当前文档：{pdfName}</p> : null}
-          {pageCount ? <p className="muted">页数：{pageCount} · 文本块：{segments.length}</p> : null}
-        </div>
-
-        <div className="panel">
-          <h2>AI 操作</h2>
-          <button onClick={runSummaryAndHighlights} disabled={!fullText || !settings.apiKey}>生成摘要 + 高亮</button>
+          <button className="secondary" onClick={runSummaryAndHighlights} disabled={!fullText || !settings.apiKey}>
+            生成摘要
+          </button>
           <button className="secondary" onClick={translateVisibleSegments} disabled={!visibleSegments.length || !settings.apiKey}>
             翻译当前视图
           </button>
-          <div className="inline-actions">
-            <button className={readerMode === 'original' ? 'active-tab' : ''} onClick={() => setReaderMode('original')}>原文</button>
-            <button className={readerMode === 'translated' ? 'active-tab' : ''} onClick={() => setReaderMode('translated')}>译文</button>
-          </div>
-          <div className="tag-stats">
-            <span>独创性 {stats.novelty}</span>
-            <span>方法 {stats.method}</span>
-            <span>结果 {stats.result}</span>
-            <span>局限 {stats.limitation}</span>
-          </div>
         </div>
-      </aside>
+      </header>
 
-      <main className="content">
-        <section className="top-grid">
-          <div className="panel large-panel">
-            <div className="section-header">
-              <h2>对照阅读</h2>
-              <select value={selectedPage} onChange={(e) => setSelectedPage(e.target.value === 'all' ? 'all' : Number(e.target.value))}>
-                <option value="all">全部页面</option>
-                {Array.from({ length: pageCount }, (_, i) => i + 1).map((page) => (
-                  <option key={page} value={page}>第 {page} 页</option>
+      <div className="workspace">
+        <aside className="left-rail">
+          <div className="rail-tabs">
+            <button className={activeSidebar === 'document' ? 'active-tab' : ''} onClick={() => setActiveSidebar('document')}>
+              文档
+            </button>
+            <button className={activeSidebar === 'model' ? 'active-tab' : ''} onClick={() => setActiveSidebar('model')}>
+              模型
+            </button>
+          </div>
+
+          {activeSidebar === 'document' ? (
+            <>
+              <section className="soft-panel">
+                <h2>导入论文</h2>
+                <button onClick={() => fileInputRef.current?.click()}>选择本地 PDF</button>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="application/pdf"
+                  hidden
+                  onChange={(e) => {
+                    const file = e.target.files?.[0]
+                    if (file) void onUploadFile(file)
+                  }}
+                />
+                <div
+                  className={`dropzone ${dragging ? 'dragging' : ''}`}
+                  onDragOver={(e) => {
+                    e.preventDefault()
+                    setDragging(true)
+                  }}
+                  onDragLeave={() => setDragging(false)}
+                  onDrop={(e) => {
+                    e.preventDefault()
+                    setDragging(false)
+                    const file = e.dataTransfer.files?.[0]
+                    if (file) void onUploadFile(file)
+                  }}
+                >
+                  拖拽 PDF 到这里
+                </div>
+                <label>
+                  PDF / arXiv 链接
+                  <input
+                    value={pdfUrl}
+                    onChange={(e) => setPdfUrl(e.target.value)}
+                    placeholder="https://.../paper.pdf 或 arxiv abs"
+                  />
+                </label>
+                <button className="secondary" onClick={() => onLoadFromUrl()}>
+                  从链接加载
+                </button>
+                {!!recentUrls.length && (
+                  <div className="recent-urls">
+                    <div className="subtle-label">最近导入</div>
+                    {recentUrls.map((url) => (
+                      <button key={url} className="url-chip" onClick={() => onLoadFromUrl(url)} title={url}>
+                        {url}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </section>
+
+              <section className="soft-panel compact-gap">
+                <h2>阅读控制</h2>
+                <label>
+                  页码筛选
+                  <select
+                    value={selectedPage}
+                    onChange={(e) => setSelectedPage(e.target.value === 'all' ? 'all' : Number(e.target.value))}
+                  >
+                    <option value="all">全部页面</option>
+                    {Array.from({ length: pageCount }, (_, i) => i + 1).map((page) => (
+                      <option key={page} value={page}>
+                        第 {page} 页
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  搜索
+                  <input value={searchText} onChange={(e) => setSearchText(e.target.value)} placeholder="搜索原文或译文" />
+                </label>
+                <label>
+                  高亮标签
+                  <select value={activeTag} onChange={(e) => setActiveTag(e.target.value as HighlightTag | 'all')}>
+                    <option value="all">全部标签</option>
+                    <option value="novelty">novelty</option>
+                    <option value="method">method</option>
+                    <option value="result">result</option>
+                    <option value="limitation">limitation</option>
+                  </select>
+                </label>
+                <div className="mode-switch">
+                  <button className={readerMode === 'original' ? 'active-tab' : ''} onClick={() => setReaderMode('original')}>
+                    原文
+                  </button>
+                  <button className={readerMode === 'translated' ? 'active-tab' : ''} onClick={() => setReaderMode('translated')}>
+                    译文
+                  </button>
+                </div>
+              </section>
+
+              <section className="soft-panel stats-panel">
+                <div>
+                  <div className="metric-value">{readingStats.visibleSegments}</div>
+                  <div className="metric-label">当前可见段落</div>
+                </div>
+                <div>
+                  <div className="metric-value">{readingStats.novelty}</div>
+                  <div className="metric-label">创新点</div>
+                </div>
+                <div>
+                  <div className="metric-value">{readingStats.method}</div>
+                  <div className="metric-label">方法</div>
+                </div>
+                <div>
+                  <div className="metric-value">{readingStats.result}</div>
+                  <div className="metric-label">结果</div>
+                </div>
+              </section>
+            </>
+          ) : (
+            <section className="soft-panel">
+              <h2>模型配置</h2>
+              <div className="preset-list">
+                {providerPresets.map((preset) => (
+                  <button
+                    key={preset.id}
+                    className="chip"
+                    onClick={() =>
+                      setSettings((prev) => ({
+                        ...prev,
+                        baseUrl: preset.baseUrl,
+                        model: preset.model,
+                      }))
+                    }
+                  >
+                    {preset.label}
+                  </button>
                 ))}
-              </select>
-            </div>
+              </div>
+              <label>
+                Base URL
+                <input
+                  value={settings.baseUrl}
+                  onChange={(e) => setSettings((prev) => ({ ...prev, baseUrl: e.target.value }))}
+                  placeholder="https://api.openai.com/v1"
+                />
+              </label>
+              <label>
+                Model
+                <input
+                  value={settings.model}
+                  onChange={(e) => setSettings((prev) => ({ ...prev, model: e.target.value }))}
+                  placeholder="gpt-4.1-mini"
+                />
+              </label>
+              <label>
+                API Key
+                <input
+                  type="password"
+                  value={settings.apiKey}
+                  onChange={(e) => setSettings((prev) => ({ ...prev, apiKey: e.target.value }))}
+                  placeholder="sk-..."
+                  autoComplete="off"
+                />
+              </label>
+              <label>
+                System Prompt
+                <textarea
+                  value={settings.systemPrompt}
+                  onChange={(e) => setSettings((prev) => ({ ...prev, systemPrompt: e.target.value }))}
+                />
+              </label>
+              <button className="secondary" onClick={clearLocalSecrets}>
+                清空本地 API Key
+              </button>
+              <p className="muted small-text">密钥只保存在当前浏览器 localStorage，不会被提交到仓库。</p>
+            </section>
+          )}
+        </aside>
 
-            <div className="reader-filters">
-              <input value={searchText} onChange={(e) => setSearchText(e.target.value)} placeholder="搜索原文/译文关键词" />
-              <select value={activeTag} onChange={(e) => setActiveTag(e.target.value as HighlightTag | 'all')}>
-                <option value="all">全部标签</option>
-                <option value="novelty">novelty</option>
-                <option value="method">method</option>
-                <option value="result">result</option>
-                <option value="limitation">limitation</option>
-              </select>
+        <main className="reader-column">
+          <section className="reader-hero">
+            <div>
+              <div className="eyebrow">Focused Reading Workspace</div>
+              <h2>{pdfName || '把论文导进来，开始高效精读'}</h2>
+              <p>
+                让正文成为中心，摘要、高亮、翻译和问答都围绕正文展开，而不是把阅读打断成一堆工具卡片。
+              </p>
             </div>
+            <div className="reader-hero-stats">
+              <div>
+                <strong>{pageCount || '--'}</strong>
+                <span>页数</span>
+              </div>
+              <div>
+                <strong>{segments.length || '--'}</strong>
+                <span>阅读块</span>
+              </div>
+              <div>
+                <strong>{readingStats.limitation}</strong>
+                <span>局限</span>
+              </div>
+            </div>
+          </section>
 
-            <div className="reader-grid">
-              {visibleSegments.map((segment) => {
+          <section className="reading-surface">
+            {visibleSegments.length ? (
+              visibleSegments.map((segment) => {
                 const highlights = tagMap[segment.id] || []
                 return (
-                  <article key={segment.id} className="segment-card">
-                    <div className="segment-meta">
+                  <article key={segment.id} className={`reading-block ${highlights.length ? 'has-highlight' : ''}`}>
+                    <div className="reading-meta">
                       <span>{segment.id}</span>
                       <span>Page {segment.page}</span>
                     </div>
-                    <p>{segment.text}</p>
-                    <div className="translation-box">
-                      {readerMode === 'translated' ? segment.translation || '尚未翻译此段。' : segment.text}
+                    <div className="reading-text">{segment.text}</div>
+                    <div className={`reading-translation ${readerMode === 'translated' ? 'active' : ''}`}>
+                      {readerMode === 'translated' ? segment.translation || '尚未翻译此段。' : '切换到“译文”模式可查看对应翻译。'}
                     </div>
                     {highlights.length ? (
                       <div className="highlight-list">
@@ -611,39 +710,69 @@ function App() {
                     ) : null}
                   </article>
                 )
-              })}
-            </div>
-          </div>
+              })
+            ) : (
+              <div className="empty-state">
+                <h3>还没有论文内容</h3>
+                <p>先上传 PDF 或导入链接。导入后，这里会变成你的主阅读区。</p>
+              </div>
+            )}
+          </section>
+        </main>
 
-          <div className="side-stack">
-            <div className="panel">
-              <h2>摘要</h2>
-              <div className="output-box">{summary || '先导入 PDF，再点击“生成摘要 + 高亮”。'}</div>
-            </div>
-            <div className="panel">
-              <h2>基于 PDF 问答</h2>
-              <textarea value={question} onChange={(e) => setQuestion(e.target.value)} placeholder="例如：这篇论文的方法核心创新是什么？" />
-              <button onClick={askQuestion} disabled={!question || !settings.apiKey || !fullText}>提问</button>
-              <div className="output-box">{answer || '问题答案会显示在这里。'}</div>
-              {!!qaHistory.length && (
-                <div className="qa-history">
-                  <div className="muted">最近问答</div>
-                  {qaHistory.map((item) => (
-                    <details key={item.id}>
-                      <summary>{item.question}</summary>
-                      <div className="output-box">{item.answer}</div>
-                    </details>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        </section>
+        <aside className="right-rail">
+          <section className="soft-panel action-panel">
+            <h2>AI 助读</h2>
+            <button onClick={runSummaryAndHighlights} disabled={!fullText || !settings.apiKey}>
+              生成摘要 + 高亮
+            </button>
+            <button className="secondary" onClick={translateVisibleSegments} disabled={!visibleSegments.length || !settings.apiKey}>
+              翻译当前视图
+            </button>
+          </section>
 
-        {busy ? <div className="status-banner">{busy}</div> : null}
-        {progress ? <div className="status-banner">{progress}</div> : null}
-        {error ? <div className="status-banner error">{error}</div> : null}
-      </main>
+          <section className="soft-panel insight-panel">
+            <div className="section-title-row">
+              <h2>摘要与洞察</h2>
+              <span className="subtle-label">{analysis.length ? `${analysis.length} 条结构化标记` : '待生成'}</span>
+            </div>
+            <div className="summary-box">{summary || '这里会显示论文摘要、核心结论和结构化洞察。'}</div>
+            <div className="tag-stats">
+              <span className="tag tag-novelty">创新 {readingStats.novelty}</span>
+              <span className="tag tag-method">方法 {readingStats.method}</span>
+              <span className="tag tag-result">结果 {readingStats.result}</span>
+              <span className="tag tag-limitation">局限 {readingStats.limitation}</span>
+            </div>
+          </section>
+
+          <section className="soft-panel qa-panel">
+            <div className="section-title-row">
+              <h2>基于论文问答</h2>
+              <span className="subtle-label">只基于当前导入内容</span>
+            </div>
+            <textarea value={question} onChange={(e) => setQuestion(e.target.value)} placeholder="例如：这篇论文的方法核心创新是什么？" />
+            <button onClick={askQuestion} disabled={!question || !settings.apiKey || !fullText}>
+              提问
+            </button>
+            <div className="output-box">{answer || '问题答案会显示在这里。'}</div>
+            {!!qaHistory.length && (
+              <div className="qa-history">
+                <div className="subtle-label">最近问答</div>
+                {qaHistory.map((item) => (
+                  <details key={item.id}>
+                    <summary>{item.question}</summary>
+                    <div className="output-box">{item.answer}</div>
+                  </details>
+                ))}
+              </div>
+            )}
+          </section>
+        </aside>
+      </div>
+
+      {busy ? <div className="status-banner">{busy}</div> : null}
+      {progress ? <div className="status-banner">{progress}</div> : null}
+      {error ? <div className="status-banner error">{error}</div> : null}
     </div>
   )
 }
