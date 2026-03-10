@@ -228,7 +228,10 @@ function App() {
   const [readerMode, setReaderMode] = useState<'original' | 'translated'>('original')
   const [dragging, setDragging] = useState(false)
   const [activeSidebar, setActiveSidebar] = useState<'document' | 'model'>('document')
+  const [activeRightTab, setActiveRightTab] = useState<'summary' | 'qa'>('summary')
+  const [focusedSegmentId, setFocusedSegmentId] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
+  const segmentRefs = useRef<Record<string, HTMLElement | null>>({})
 
   useEffect(() => {
     localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings))
@@ -238,12 +241,27 @@ function App() {
     localStorage.setItem(RECENT_URLS_KEY, JSON.stringify(recentUrls.slice(0, 5)))
   }, [recentUrls])
 
+  useEffect(() => {
+    if (!focusedSegmentId) return
+    const timer = window.setTimeout(() => setFocusedSegmentId(null), 2200)
+    return () => window.clearTimeout(timer)
+  }, [focusedSegmentId])
+
   const tagMap = useMemo(() => {
     return analysis.reduce<Record<string, HighlightItem[]>>((acc, item) => {
       acc[item.segmentId] ??= []
       acc[item.segmentId].push(item)
       return acc
     }, {})
+  }, [analysis])
+
+  const groupedHighlights = useMemo(() => {
+    return {
+      novelty: analysis.filter((item) => item.tag === 'novelty').slice(0, 8),
+      method: analysis.filter((item) => item.tag === 'method').slice(0, 8),
+      result: analysis.filter((item) => item.tag === 'result').slice(0, 8),
+      limitation: analysis.filter((item) => item.tag === 'limitation').slice(0, 8),
+    }
   }, [analysis])
 
   const visibleSegments = useMemo(() => {
@@ -277,6 +295,26 @@ function App() {
     }
   }, [analysis, segments.length, visibleSegments.length])
 
+  const documentState = useMemo(() => {
+    if (!pdfName) return '未导入'
+    if (summary && analysis.length) return '已完成摘要分析'
+    if (segments.length) return '已导入，待分析'
+    return '准备中'
+  }, [pdfName, summary, analysis.length, segments.length])
+
+  function focusSegment(segmentId: string, options?: { activateTag?: HighlightTag | 'all'; openTab?: 'summary' | 'qa' }) {
+    const seg = segments.find((item) => item.id === segmentId)
+    if (!seg) return
+    if (options?.activateTag) setActiveTag(options.activateTag)
+    setSelectedPage(seg.page)
+    setFocusedSegmentId(segmentId)
+    if (options?.openTab) setActiveRightTab(options.openTab)
+    requestAnimationFrame(() => {
+      const el = segmentRefs.current[segmentId]
+      el?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    })
+  }
+
   async function handlePdfBuffer(buffer: ArrayBuffer, name: string) {
     try {
       setBusy('正在解析 PDF…')
@@ -296,6 +334,7 @@ function App() {
       setSearchText('')
       setActiveTag('all')
       setActiveSidebar('document')
+      setActiveRightTab('summary')
       setProgress(`已载入 ${parsed.pageCount} 页，${parsed.segments.length} 个阅读块`)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'PDF 解析失败')
@@ -365,6 +404,7 @@ function App() {
       const parsed = JSON.parse(normalizeJsonBlock(content)) as AnalysisBundle
       setSummary(parsed.summary || '')
       setAnalysis(parsed.highlights || [])
+      setActiveRightTab('summary')
       setProgress(`完成：摘要 + 高亮 ${parsed.highlights?.length ?? 0} 条`)
     } catch (e) {
       setError(e instanceof Error ? e.message : '摘要分析失败')
@@ -436,6 +476,7 @@ function App() {
       })
       setAnswer(content)
       setQaHistory((prev) => [{ id: crypto.randomUUID(), question, answer: content }, ...prev].slice(0, 8))
+      setActiveRightTab('qa')
     } catch (e) {
       setError(e instanceof Error ? e.message : '问答失败')
     } finally {
@@ -489,7 +530,10 @@ function App() {
           {activeSidebar === 'document' ? (
             <>
               <section className="soft-panel">
-                <h2>导入论文</h2>
+                <div className="section-title-row">
+                  <h2>导入论文</h2>
+                  <span className="subtle-label">{documentState}</span>
+                </div>
                 <button onClick={() => fileInputRef.current?.click()}>选择本地 PDF</button>
                 <input
                   ref={fileInputRef}
@@ -515,7 +559,7 @@ function App() {
                     if (file) void onUploadFile(file)
                   }}
                 >
-                  拖拽 PDF 到这里
+                  拖拽 PDF 到这里，快速进入阅读流
                 </div>
                 <label>
                   PDF / arXiv 链接
@@ -586,12 +630,12 @@ function App() {
                   <div className="metric-label">当前可见段落</div>
                 </div>
                 <div>
-                  <div className="metric-value">{readingStats.novelty}</div>
-                  <div className="metric-label">创新点</div>
+                  <div className="metric-value">{readingStats.totalSegments}</div>
+                  <div className="metric-label">全文段落</div>
                 </div>
                 <div>
-                  <div className="metric-value">{readingStats.method}</div>
-                  <div className="metric-label">方法</div>
+                  <div className="metric-value">{readingStats.novelty}</div>
+                  <div className="metric-label">创新点</div>
                 </div>
                 <div>
                   <div className="metric-value">{readingStats.result}</div>
@@ -666,7 +710,7 @@ function App() {
               <div className="eyebrow">Focused Reading Workspace</div>
               <h2>{pdfName || '把论文导进来，开始高效精读'}</h2>
               <p>
-                让正文成为中心，摘要、高亮、翻译和问答都围绕正文展开，而不是把阅读打断成一堆工具卡片。
+                让正文成为中心，摘要、高亮、翻译和问答都围绕正文展开。读到哪里、为什么重要、证据在哪，应该一眼看清。
               </p>
             </div>
             <div className="reader-hero-stats">
@@ -679,8 +723,8 @@ function App() {
                 <span>阅读块</span>
               </div>
               <div>
-                <strong>{readingStats.limitation}</strong>
-                <span>局限</span>
+                <strong>{analysis.length || '--'}</strong>
+                <span>结构标记</span>
               </div>
             </div>
           </section>
@@ -690,21 +734,34 @@ function App() {
               visibleSegments.map((segment) => {
                 const highlights = tagMap[segment.id] || []
                 return (
-                  <article key={segment.id} className={`reading-block ${highlights.length ? 'has-highlight' : ''}`}>
+                  <article
+                    key={segment.id}
+                    ref={(node) => {
+                      segmentRefs.current[segment.id] = node
+                    }}
+                    className={`reading-block ${highlights.length ? 'has-highlight' : ''} ${focusedSegmentId === segment.id ? 'is-focused' : ''}`}
+                  >
                     <div className="reading-meta">
                       <span>{segment.id}</span>
                       <span>Page {segment.page}</span>
                     </div>
                     <div className="reading-text">{segment.text}</div>
                     <div className={`reading-translation ${readerMode === 'translated' ? 'active' : ''}`}>
-                      {readerMode === 'translated' ? segment.translation || '尚未翻译此段。' : '切换到“译文”模式可查看对应翻译。'}
+                      {readerMode === 'translated'
+                        ? segment.translation || '尚未翻译此段。'
+                        : '切换到“译文”模式可查看对应翻译。'}
                     </div>
                     {highlights.length ? (
                       <div className="highlight-list">
                         {highlights.map((item, idx) => (
-                          <span key={`${item.segmentId}-${item.tag}-${idx}`} className={`tag tag-${item.tag}`} title={item.reason}>
+                          <button
+                            key={`${item.segmentId}-${item.tag}-${idx}`}
+                            className={`tag tag-${item.tag}`}
+                            title={item.reason}
+                            onClick={() => focusSegment(segment.id, { activateTag: item.tag, openTab: 'summary' })}
+                          >
                             {item.tag}
-                          </span>
+                          </button>
                         ))}
                       </div>
                     ) : null}
@@ -714,7 +771,11 @@ function App() {
             ) : (
               <div className="empty-state">
                 <h3>还没有论文内容</h3>
-                <p>先上传 PDF 或导入链接。导入后，这里会变成你的主阅读区。</p>
+                <p>先上传 PDF 或导入链接。导入后，我会把这里变成你的主阅读区。</p>
+                <div className="empty-actions">
+                  <button onClick={() => fileInputRef.current?.click()}>上传 PDF</button>
+                  <button className="secondary" onClick={() => setActiveSidebar('document')}>输入链接</button>
+                </div>
               </div>
             )}
           </section>
@@ -732,39 +793,94 @@ function App() {
           </section>
 
           <section className="soft-panel insight-panel">
-            <div className="section-title-row">
-              <h2>摘要与洞察</h2>
-              <span className="subtle-label">{analysis.length ? `${analysis.length} 条结构化标记` : '待生成'}</span>
+            <div className="rail-tabs">
+              <button className={activeRightTab === 'summary' ? 'active-tab' : ''} onClick={() => setActiveRightTab('summary')}>
+                摘要洞察
+              </button>
+              <button className={activeRightTab === 'qa' ? 'active-tab' : ''} onClick={() => setActiveRightTab('qa')}>
+                问答记录
+              </button>
             </div>
-            <div className="summary-box">{summary || '这里会显示论文摘要、核心结论和结构化洞察。'}</div>
-            <div className="tag-stats">
-              <span className="tag tag-novelty">创新 {readingStats.novelty}</span>
-              <span className="tag tag-method">方法 {readingStats.method}</span>
-              <span className="tag tag-result">结果 {readingStats.result}</span>
-              <span className="tag tag-limitation">局限 {readingStats.limitation}</span>
-            </div>
-          </section>
 
-          <section className="soft-panel qa-panel">
-            <div className="section-title-row">
-              <h2>基于论文问答</h2>
-              <span className="subtle-label">只基于当前导入内容</span>
-            </div>
-            <textarea value={question} onChange={(e) => setQuestion(e.target.value)} placeholder="例如：这篇论文的方法核心创新是什么？" />
-            <button onClick={askQuestion} disabled={!question || !settings.apiKey || !fullText}>
-              提问
-            </button>
-            <div className="output-box">{answer || '问题答案会显示在这里。'}</div>
-            {!!qaHistory.length && (
-              <div className="qa-history">
-                <div className="subtle-label">最近问答</div>
-                {qaHistory.map((item) => (
-                  <details key={item.id}>
-                    <summary>{item.question}</summary>
-                    <div className="output-box">{item.answer}</div>
-                  </details>
-                ))}
-              </div>
+            {activeRightTab === 'summary' ? (
+              <>
+                <div className="section-title-row">
+                  <h2>摘要与洞察</h2>
+                  <span className="subtle-label">{analysis.length ? `${analysis.length} 条结构化标记` : '待生成'}</span>
+                </div>
+                <div className="summary-box">{summary || '这里会显示论文摘要、核心结论和结构化洞察。'}</div>
+                <div className="tag-stats">
+                  <button className="tag tag-novelty" onClick={() => setActiveTag('novelty')}>
+                    创新 {readingStats.novelty}
+                  </button>
+                  <button className="tag tag-method" onClick={() => setActiveTag('method')}>
+                    方法 {readingStats.method}
+                  </button>
+                  <button className="tag tag-result" onClick={() => setActiveTag('result')}>
+                    结果 {readingStats.result}
+                  </button>
+                  <button className="tag tag-limitation" onClick={() => setActiveTag('limitation')}>
+                    局限 {readingStats.limitation}
+                  </button>
+                </div>
+
+                <div className="insight-groups">
+                  {(['novelty', 'method', 'result', 'limitation'] as HighlightTag[]).map((tag) => (
+                    <div key={tag} className="insight-group">
+                      <div className="subtle-label">{tag}</div>
+                      {groupedHighlights[tag].length ? (
+                        groupedHighlights[tag].slice(0, 3).map((item, idx) => (
+                          <button
+                            key={`${item.segmentId}-${tag}-${idx}`}
+                            className="insight-item"
+                            onClick={() => focusSegment(item.segmentId, { activateTag: tag, openTab: 'summary' })}
+                          >
+                            <strong>{item.segmentId}</strong>
+                            <span>{item.reason}</span>
+                          </button>
+                        ))
+                      ) : (
+                        <div className="insight-empty">暂无 {tag} 标记</div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="section-title-row">
+                  <h2>基于论文问答</h2>
+                  <span className="subtle-label">可引用段落定位</span>
+                </div>
+                <textarea value={question} onChange={(e) => setQuestion(e.target.value)} placeholder="例如：这篇论文的方法核心创新是什么？" />
+                <button onClick={askQuestion} disabled={!question || !settings.apiKey || !fullText}>
+                  提问
+                </button>
+                <div className="output-box">{answer || '问题答案会显示在这里。'}</div>
+                {!!qaHistory.length && (
+                  <div className="qa-history">
+                    <div className="subtle-label">最近问答</div>
+                    {qaHistory.map((item) => {
+                      const refs = [...item.answer.matchAll(/\[([^\]]+)\]/g)].map((m) => m[1])
+                      return (
+                        <details key={item.id}>
+                          <summary>{item.question}</summary>
+                          <div className="output-box">{item.answer}</div>
+                          {!!refs.length && (
+                            <div className="citation-row">
+                              {refs.map((ref) => (
+                                <button key={`${item.id}-${ref}`} className="citation-chip" onClick={() => focusSegment(ref, { openTab: 'qa' })}>
+                                  {ref}
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </details>
+                      )
+                    })}
+                  </div>
+                )}
+              </>
             )}
           </section>
         </aside>
