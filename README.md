@@ -65,23 +65,26 @@ This will run:
 - tracked-file secret pattern scan (avoid leaking test API key/base URL)
 - build output base path verification for GitHub Pages
 
-## Publish to GitHub Pages repo
+## Deploy to GitHub Pages (recommended)
+
+This project uses a **single public repository** workflow:
+
+- Develop on `main`
+- Push to `main`
+- GitHub Actions deploys Pages automatically
+
+```bash
+git push origin main
+```
+
+Detailed notes: see `DEPLOYMENT_PLAN.md`.
+
+## Optional legacy publish script
+
+If you still need to sync `dist/` to another repo/directory manually:
 
 ```bash
 npm run publish:pages
-```
-
-This publishes the built `dist/` output to the separate public Pages repository.
-
-### Publish with custom repo path / remote
-
-```bash
+# or
 ./scripts/publish-pages.sh /tmp/paper-moonlight-h5-pages git@github.com:<you>/paper-moonlight-h5-pages.git
 ```
-
-## Repository model
-
-- Single public repository workflow
-- Develop directly on `main`
-- GitHub Actions deploys Pages automatically
-- Detailed notes: see `DEPLOYMENT_PLAN.md`
