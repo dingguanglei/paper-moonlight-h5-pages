@@ -72,3 +72,10 @@ This publishes the built `dist/` output to the separate public Pages repository.
 ```bash
 ./scripts/publish-pages.sh /tmp/paper-moonlight-h5-pages git@github.com:<you>/paper-moonlight-h5-pages.git
 ```
+
+## Repository model
+
+- Single public repository workflow
+- Develop directly on `main`
+- GitHub Actions deploys Pages automatically
+- Detailed notes: see `DEPLOYMENT_PLAN.md`

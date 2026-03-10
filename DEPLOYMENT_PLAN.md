@@ -1,64 +1,44 @@
-# Deployment Plan: Private Source Repo + Public Pages Repo
+# Deployment Plan: Single Public Repository
 
-目标：
-- **私有仓库**保存完整源码（持续开发）
-- **公开 Pages 仓库**仅发布静态产物（`dist/`）
+当前采用单仓模式：
+- **公开仓库**同时保存源码与 GitHub Pages 部署配置
+- 直接在 `main` 分支开发、提交、推送
+- GitHub Actions 负责构建并部署页面
 
-## Recommended Repository Layout
+## Current repository
 
-1. `paper-moonlight-h5-private` (GitHub Private)
-   - Contains full source code
-   - Main development branch (e.g. `main`)
+- Source + Pages repo: `paper-moonlight-h5-pages`
 
-2. `paper-moonlight-h5-pages` (GitHub Public)
-   - Contains only static site files from `dist/`
-   - Served by GitHub Pages (branch `main` root)
-
-## Why split into two repos
-
-- Keeps source history private.
-- Public repo has no dev configs or accidental secrets.
-- Easy rollback by force-updating static files only.
-
-## Local workflow (minimal)
-
-在私有仓库中开发：
+## Recommended workflow
 
 ```bash
 npm install
+npm run dev
+npm run lint
 npm run build
+git add .
+git commit -m "feat: ..."
+git push origin main
 ```
 
-将 `dist/` 同步到公开 Pages 仓库（示例脚本逻辑）：
+推送到 `main` 后，GitHub Pages workflow 会自动构建并部署。
 
-1. Build in private repo
-2. Clone/update public pages repo to temp dir
-3. Remove old files in public repo
-4. Copy `dist/*` into public repo root
-5. Commit + push
+## Pages URL
 
-## If this machine cannot create GitHub repos directly
+- `https://dingguanglei.github.io/paper-moonlight-h5-pages/`
 
-最小用户动作（一次性）：
+## Security notes
 
-1. 在 GitHub 网页端手动创建两个仓库：
-   - Private: `paper-moonlight-h5-private`
-   - Public: `paper-moonlight-h5-pages`
-2. 在 Public 仓库 Settings → Pages：
-   - Source: Deploy from a branch
-   - Branch: `main` / `/root`
-3. 把两个仓库 URL 发给代理（HTTPS 或 SSH 都可）
+- 本地测试 API key / base URL 等敏感信息放在 `.env` 中
+- `.env`、`.env.*` 已在 `.gitignore` 中忽略
+- 仓库内只保留 `.env.example` 作为模板
 
-之后代理可继续完成：
-- 绑定 remotes
-- 推送私有源码
-- 构建并发布 `dist` 到公开仓库
+## Optional local publish script
 
-## Optional automation (later)
+如果需要在本地生成纯静态产物并同步到另一个目录，可用：
 
-可在私有仓库配置 GitHub Action：
-- On push to `main`
-- `npm ci && npm run build`
-- Publish `dist` to public repo (via deploy key / PAT with least privilege)
+```bash
+npm run publish:pages
+```
 
-注意：不要把 PAT 明文写进仓库；使用 GitHub Secrets。
+这个脚本当前默认目标仍是 `paper-moonlight-h5-pages`。
