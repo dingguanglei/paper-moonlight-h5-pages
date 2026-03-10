@@ -53,10 +53,22 @@ npm run build
 npm run lint
 ```
 
+## Release preflight (recommended)
+
+```bash
+npm run check
+```
+
 ## Publish to GitHub Pages repo
 
 ```bash
-./scripts/publish-pages.sh
+npm run publish:pages
 ```
 
 This publishes the built `dist/` output to the separate public Pages repository.
+
+### Publish with custom repo path / remote
+
+```bash
+./scripts/publish-pages.sh /tmp/paper-moonlight-h5-pages git@github.com:<you>/paper-moonlight-h5-pages.git
+```
