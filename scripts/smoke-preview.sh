@@ -4,8 +4,18 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
-PORT="${SMOKE_PORT:-4174}"
+BASE_PORT="${SMOKE_PORT:-4174}"
 HOST="127.0.0.1"
+PORT="$BASE_PORT"
+
+# 若默认端口被占用，自动尝试下一个可用端口，避免命中旧 preview 进程导致假阳性。
+for try_port in $(seq "$BASE_PORT" $((BASE_PORT + 20))); do
+  if ! ss -ltnH "sport = :$try_port" | grep -q .; then
+    PORT="$try_port"
+    break
+  fi
+done
+
 URL="http://${HOST}:${PORT}/paper-moonlight-h5-pages/"
 
 npm run build >/dev/null
@@ -18,10 +28,17 @@ cleanup() {
 }
 trap cleanup EXIT
 
-for _ in {1..20}; do
+for _ in {1..30}; do
   if curl -fsS "$URL" >/tmp/paper-moonlight-h5-smoke.html 2>/dev/null; then
     break
   fi
+
+  if ! kill -0 "$PREVIEW_PID" >/dev/null 2>&1; then
+    echo "❌ Smoke check failed: preview process exited unexpectedly."
+    echo "See /tmp/paper-moonlight-h5-smoke.log"
+    exit 1
+  fi
+
   sleep 0.5
 done
 
